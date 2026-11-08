@@ -6,10 +6,10 @@ The system removes feed algorithms and social engagement features to isolate cha
 Initial host operating system: macOS.
 
 ### 1.1 Phased Delivery Roadmap
-- **Phase 1 (Current)**:
+- **Goal 1 (Current)**:
   - Independent TypeScript aggregation engine daemon.
   - Interactive Terminal / CLI client for validation, testing, and operations.
-- **Phase 2 (Subsequent)**:
+- **Goal 2 (Subsequent)**:
   - Native macOS GUI application built in Swift.
   - Extensible community UI frontends.
 
