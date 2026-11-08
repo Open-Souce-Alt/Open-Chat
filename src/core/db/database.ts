@@ -8,16 +8,20 @@ export function getDatabasePath(): string {
   if (process.env.OPENCHAT_DB_PATH) {
     return process.env.OPENCHAT_DB_PATH;
   }
+
   const baseDir = path.join(os.homedir(), '.openchat');
+
   if (!fs.existsSync(baseDir)) {
     fs.mkdirSync(baseDir, { recursive: true });
   }
+
   return path.join(baseDir, 'openchat.db');
 }
 
 export function initDatabase(dbPath?: string): DatabaseType {
   const resolvedPath = dbPath || getDatabasePath();
   const dbDir = path.dirname(resolvedPath);
+
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
   }
@@ -31,6 +35,34 @@ export function initDatabase(dbPath?: string): DatabaseType {
   // Execute schema DDL
   db.exec(DDL_SCHEMA);
 
+  // Migration: ensure platform_id column exists
+  try {
+    db.exec("ALTER TABLE chats ADD COLUMN platform_id TEXT NOT NULL DEFAULT 'whatsapp'");
+  } catch {
+    // column already exists
+  }
+
+  // Synchronize chat updated_at with actual latest message timestamps
+  db.prepare(`
+    UPDATE chats
+    SET updated_at = (
+      SELECT MAX(m.timestamp)
+      FROM messages m
+      WHERE m.chat_id = chats.id
+    )
+    WHERE EXISTS (
+      SELECT 1 FROM messages m WHERE m.chat_id = chats.id
+    )
+  `).run();
+
+  // Reset inactive chats without messages to 0 so they don't display the sync-time timestamp
+  db.prepare(`
+    UPDATE chats
+    SET updated_at = 0
+    WHERE id NOT IN (SELECT DISTINCT chat_id FROM messages)
+      AND id != 'chat_welcome'
+  `).run();
+
   // Run initial seed if root directory does not exist
   seedInitialData(db);
 
@@ -39,6 +71,7 @@ export function initDatabase(dbPath?: string): DatabaseType {
 
 function seedInitialData(db: DatabaseType): void {
   const rootCheck = db.prepare('SELECT id FROM directories WHERE id = ?').get('root');
+
   if (rootCheck) {
     return; // Already initialized
   }
@@ -71,9 +104,9 @@ function seedInitialData(db: DatabaseType): void {
 
     // 4. Welcome chat node
     db.prepare(`
-      INSERT INTO chats (id, account_id, external_id, title, chat_type, metadata, unread_count, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('chat_welcome', 'acc_system', 'system:welcome', 'Welcome to Open Chat', 'direct_message', null, 0, now, now);
+      INSERT INTO chats (id, account_id, platform_id, external_id, title, chat_type, metadata, unread_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('chat_welcome', 'acc_system', 'system', 'system:welcome', 'Welcome to Open Chat', 'direct_message', null, 0, now, now);
 
     // 5. Welcome messages
     const insertMsg = db.prepare(`

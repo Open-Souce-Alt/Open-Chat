@@ -17,18 +17,22 @@ export function registerVfsRoutes(
     };
   });
 
-  // GET /api/vfs/ls?path=...&all=true
+  // GET /api/vfs/ls?path=...&all=true&sort=time&reverse=true
   app.get<{
-    Querystring: { path?: string; all?: string | boolean };
+    Querystring: { path?: string; all?: string | boolean; sort?: 'time' | 'name'; reverse?: string | boolean };
   }>('/api/vfs/ls', async (request, reply) => {
     try {
       const targetPath = request.query.path;
       const all = request.query.all === 'true' || request.query.all === true;
-      const entries = vfs.ls(targetPath, { all });
+      const sort = request.query.sort;
+      const reverse = request.query.reverse === 'true' || request.query.reverse === true;
+      const entries = vfs.ls(targetPath, { all, sort, reverse });
+
       return { entries };
-    } catch (err: any) {
+    } catch (err: unknown) {
       reply.status(400);
-      return { error: err.message };
+
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -43,18 +47,23 @@ export function registerVfsRoutes(
 
       if (!dir) {
         const chatLookup = vfs.resolveChatPointer(segments);
+
         if (chatLookup) {
           reply.status(400);
+
           return { error: `cd: not a directory: ${targetPath}` };
         }
+
         reply.status(404);
+
         return { error: `cd: no such file or directory: ${targetPath}` };
       }
 
       return { cwd: vfs.segmentsToPath(segments) };
-    } catch (err: any) {
+    } catch (err: unknown) {
       reply.status(400);
-      return { error: err.message };
+
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -64,16 +73,21 @@ export function registerVfsRoutes(
   }>('/api/vfs/mkdir', async (request, reply) => {
     try {
       const { path, recursive } = request.body ?? {};
+
       if (!path) {
         reply.status(400);
+
         return { error: 'mkdir: missing operand' };
       }
+
       const createdPath = vfs.mkdir(path, { recursive: !!recursive });
       broadcaster.broadcastVfsChange('mkdir', createdPath);
+
       return { created: createdPath };
-    } catch (err: any) {
+    } catch (err: unknown) {
       reply.status(400);
-      return { error: err.message };
+
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -83,16 +97,21 @@ export function registerVfsRoutes(
   }>('/api/vfs/rmdir', async (request, reply) => {
     try {
       const { path } = request.body ?? {};
+
       if (!path) {
         reply.status(400);
+
         return { error: 'rmdir: missing operand' };
       }
+
       vfs.rmdir(path);
       broadcaster.broadcastVfsChange('rmdir', path);
+
       return { removed: path };
-    } catch (err: any) {
+    } catch (err: unknown) {
       reply.status(400);
-      return { error: err.message };
+
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -102,16 +121,21 @@ export function registerVfsRoutes(
   }>('/api/vfs/cat', async (request, reply) => {
     try {
       const { path: targetPath, limit } = request.query;
+
       if (!targetPath) {
         reply.status(400);
+
         return { error: 'cat: missing chat operand' };
       }
+
       const numLimit = limit ? parseInt(String(limit), 10) : 50;
       const result = vfs.cat(targetPath, numLimit);
+
       return result;
-    } catch (err: any) {
+    } catch (err: unknown) {
       reply.status(400);
-      return { error: err.message };
+
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -121,16 +145,21 @@ export function registerVfsRoutes(
   }>('/api/vfs/ln', async (request, reply) => {
     try {
       const { source, targetDir } = request.body ?? {};
+
       if (!source || !targetDir) {
         reply.status(400);
+
         return { error: 'ln: usage: ln [-s] <source_chat> <target_directory>' };
       }
+
       const pointerName = vfs.ln(source, targetDir);
       broadcaster.broadcastVfsChange('ln', `${targetDir}/${pointerName}`);
+
       return { pointerName };
-    } catch (err: any) {
+    } catch (err: unknown) {
       reply.status(400);
-      return { error: err.message };
+
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -140,16 +169,21 @@ export function registerVfsRoutes(
   }>('/api/vfs/rm', async (request, reply) => {
     try {
       const { path } = request.body ?? {};
+
       if (!path) {
         reply.status(400);
+
         return { error: 'rm: missing operand' };
       }
+
       vfs.rm(path);
       broadcaster.broadcastVfsChange('rm', path);
+
       return { removed: path };
-    } catch (err: any) {
+    } catch (err: unknown) {
       reply.status(400);
-      return { error: err.message };
+
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -159,16 +193,21 @@ export function registerVfsRoutes(
   }>('/api/vfs/mv', async (request, reply) => {
     try {
       const { source, destination } = request.body ?? {};
+
       if (!source || !destination) {
         reply.status(400);
+
         return { error: 'mv: usage: mv <source> <destination>' };
       }
+
       vfs.mv(source, destination);
       broadcaster.broadcastVfsChange('mv', destination);
+
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       reply.status(400);
-      return { error: err.message };
+
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -178,16 +217,21 @@ export function registerVfsRoutes(
   }>('/api/vfs/cp', async (request, reply) => {
     try {
       const { source, destination, recursive } = request.body ?? {};
+
       if (!source || !destination) {
         reply.status(400);
+
         return { error: 'cp: usage: cp -r <source_dir> <dest_dir>' };
       }
+
       vfs.cp(source, destination, { recursive: !!recursive });
       broadcaster.broadcastVfsChange('cp', destination);
+
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       reply.status(400);
-      return { error: err.message };
+
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   });
 }

@@ -1,6 +1,8 @@
+export type PlatformId = 'whatsapp' | 'system';
+
 export interface AccountRow {
   id: string;
-  platform_id: string;
+  platform_id: PlatformId;
   label: string;
   status: string;
   session_data: string | null;
@@ -10,6 +12,7 @@ export interface AccountRow {
 export interface ChatRow {
   id: string;
   account_id: string;
+  platform_id: PlatformId;
   external_id: string;
   title: string;
   chat_type: "direct_message" | "group" | "channel" | "broadcast_list";
@@ -60,6 +63,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS chats (
   id TEXT PRIMARY KEY,
   account_id TEXT NOT NULL,
+  platform_id TEXT NOT NULL DEFAULT 'whatsapp',
   external_id TEXT NOT NULL,
   title TEXT NOT NULL,
   chat_type TEXT NOT NULL,

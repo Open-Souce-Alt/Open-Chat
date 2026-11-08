@@ -40,7 +40,7 @@ Initial host operating system: macOS.
 ### 2.1 Aggregation Engine (Backend Daemon)
 - **Runtime**: Independent process decoupled from UI lifecycles. Can execute locally on macOS or be hosted remotely on a Linux/macOS VPS.
 - **Integration Strategy**:
-  - Phase 1: Wrap established 3rd-party integration libraries (e.g., `@wppconnect-team/wppconnect`).
+  - Phase 1: Connect via protocol-level WebSocket libraries (e.g., `@whiskeysockets/baileys`). Browser automation (Puppeteer/wppconnect) is avoided to prevent client-side anti-bot flags and account-wide device session revocation.
   - Phase 2: Gradually replace 3rd-party dependencies with custom in-house extensions.
 - **Responsibility**:
   - Connect to external chat platforms via integration modules.
@@ -70,6 +70,7 @@ The relationship between directories and chats is a **many-to-many Directed Acyc
   - The system supports connecting multiple accounts for the same platform concurrently.
 - **Chat Node ("Canonical File")**: 
   - Represents an atomic, platform-independent conversation unit tied to an `Account`.
+  - Exposes a strict typed platform identifier (`PlatformId = 'whatsapp' | 'system'`) rather than generic string, allowing custom frontends to render native platform icons, badges, and filters.
   - Carries a **Chat Type** analogous to a "file extension" (e.g., `direct_message`, `group`, `channel`, `broadcast_list`, `thread`).
   - Holds reference to origin account/adapter, but UI/shell treats operations uniformly.
 - **Directory ("Folder / Category")**: 
@@ -128,8 +129,9 @@ When the SQLite database is initialized for the first time without any connected
     - First collision: `alex-2.dm`
     - Second collision: `alex-3.dm`
     - Groups: `standup.group`, `standup-2.group`
-- **Sanitization**:
+- **Sanitization & Identity Resolution**:
   - Raw platform titles (emojis, slashes, whitespace) are normalized into valid virtual path slugs while preserving the original human display title in database metadata.
+  - Platforms that anonymize users with Local IDs (e.g. WhatsApp `@lid`) use internal mapping tables (`lidPnMappings`) to resolve raw IDs to phone numbers and address book contact names (`pappa.dm`, `aswin.dm`). Fallbacks to sanitized phone numbers (`contact-123456789.dm`) prevent unreadable numeric identifiers.
 
 ---
 
@@ -155,7 +157,7 @@ When the SQLite database is initialized for the first time without any connected
 - **Driver Rationale**: Direct official SQLite engine binding; high-performance synchronous execution without query latency overhead.
 - **Core Entities**:
   - `accounts`: Authenticated sessions (id, platform_id, label, session_data, status).
-  - `chats`: Canonical conversation threads (id, account_id, external_id, title, type, metadata).
+  - `chats`: Canonical conversation threads (id, account_id, platform_id, external_id, title, type, metadata, unread_count, created_at, updated_at).
   - `messages`: Canonical chat messages (id, chat_id, sender_id, text, timestamp, status).
   - `directories`: Virtual filesystem directories (id, name, parent_id, is_system_root, is_hidden).
   - `chat_pointers`: Junction edges linking directories to chats (id, directory_id, chat_id, custom_name).
@@ -185,8 +187,9 @@ When the SQLite database is initialized for the first time without any connected
 - **Message Ingestion (Shallow Sync + Lazy Backfill)**:
   - Initial connection ingests only recent messages (e.g., last 20–50 messages per chat) to conserve bandwidth, memory, and avoid platform rate limits.
   - Older messages are fetched on-demand (lazy backfill) when the client requests pagination beyond cached history (`cat --page`, scrolling up in UI).
-- **Live Stream**:
+- **Live Stream & Inbound Read Sync**:
   - Once connected, real-time message events are appended immediately to SQLite and broadcast via WebSocket.
+  - Inbound read events performed on external mobile devices (e.g. WhatsApp `chats.update` with `unreadCount: 0`) are captured in real time, updating `chats.unread_count` in SQLite and propagating live badge updates up through parent directories.
 
 ---
 
@@ -215,7 +218,7 @@ The engine abstracts platform specifics through a unified state machine.
 ```
 +--------------------+      WebSocket Event          +--------------------+
 |  Platform Adapter  |  -------------------------->  |    Client Layer    |
-| (wppconnect, etc.) |  <--------------------------  | (CLI REPL / Swift) |
+| (baileys, etc.)    |  <--------------------------  | (CLI REPL / Swift) |
 +--------------------+     HTTP / WS Action          +--------------------+
 ```
 
@@ -234,7 +237,7 @@ The engine pushes a normalized challenge payload across WebSocket:
 3. Engine normalizes challenge and pushes to client via WebSocket / HTTP event.
 4. Client displays the challenge corresponding to `challengeType` (e.g., ASCII QR in terminal or native Swift view).
 5. Client submits user input (or user scans QR on external device).
-6. Adapter establishes session, stores tokens securely, and emits `AUTHENTICATED`.
+6. Adapter establishes key agreement, stores session tokens to disk, handles protocol reconnects (`restartRequired: 515`), and emits `AUTHENTICATED`.
 
 ---
 
@@ -246,7 +249,7 @@ It provides a familiar paradigm for human users and AI agents to navigate the vi
 ### 7.1 Virtual Command Mappings
 | Command | Arguments | Behavior |
 |---|---|---|
-| `ls` | `[-l] [-a] [path]` | List virtual directories and chat files. `-a` reveals dot-prefixed hidden directories (`.folder/`). Shows unread badges and timestamps. |
+| `ls` | `[-l] [-a] [-t] [-n] [-r] [path]` | List virtual directories and chat files. Default sorting: descending by last message/activity timestamp (`-t`). `-n` sorts by name. `-r` reverses sort. `-a` reveals hidden dot-folders. Shows unread badges and timestamps. |
 | `cd` | `<path>` | Navigate virtual filesystem (`/`, `..`, relative, absolute paths). |
 | `pwd` | None | Display current virtual directory path. |
 | `mkdir` | `[-p] <path>` | Create a new virtual directory (supports nested paths). |
@@ -258,6 +261,14 @@ It provides a familiar paradigm for human users and AI agents to navigate the vi
 | `cat` | `<chat_file>` | Print message history of a chat. Supports pagination / limits. |
 | `tail` | `[-f] <chat_file>` | Follow/stream new incoming and outgoing messages in real time via WebSocket. |
 | `send` | `<chat_file> "<text>"` | Dispatch an outbound message to the external platform. |
-| `connect` | `<platform>` | Initiate normalized authentication session (renders ASCII QR code in terminal). |
+| `connect` | `<platform> [label] [--clean]` | Initiate normalized authentication session (renders ASCII QR code in terminal). `--clean` resets stale session tokens. |
 | `status` | None | Display adapter connection states, active sync workers, and backend health. |
+
+### 7.2 Tab Autocompletion
+The interactive REPL integrates native Unix-like tab completion:
+- **Command Completion**: Typing `c<TAB>` cycles through commands starting with `c` (`cd`, `cat`, `cp`, `connect`, `clear`).
+- **Context-Aware Path Filtering**:
+  - `cd` and `rmdir` autocomplete only directories (`/`).
+  - `cat` autocompletes only chat files (filters out directories).
+- **Dotfile Protection**: Hidden dot-directories (`.whatsapp-personal/`) are excluded from auto-complete suggestions unless the user explicitly types a leading dot (`cd .<TAB>`).
 

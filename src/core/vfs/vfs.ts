@@ -3,18 +3,19 @@ import {
   type DirectoryRow,
   type ChatPointerRow,
   type ChatRow,
-  type MessageRow,
+  type PlatformId,
 } from '../db/schema.js';
 import { randomUUID } from 'crypto';
 
 export interface VfsEntry {
   name: string;
   type: 'directory' | 'chat';
-  chatType?: string;
+  chatType?: string | undefined;
+  platform?: PlatformId | undefined;
   unreadCount: number;
   isHidden: boolean;
-  isSystemRoot?: boolean;
-  updatedAt?: number;
+  isSystemRoot?: boolean | undefined;
+  updatedAt?: number | undefined;
 }
 
 export interface ChatMessage {
@@ -24,6 +25,11 @@ export interface ChatMessage {
   text: string;
   timestamp: number;
   status: string;
+}
+
+export interface CatChatResult {
+  chat: ChatRow;
+  messages: ChatMessage[];
 }
 
 export class VirtualFileSystem {
@@ -54,6 +60,7 @@ export class VirtualFileSystem {
       if (segment === '.' || segment === '') {
         continue;
       }
+
       if (segment === '..') {
         if (result.length > 0) {
           result.pop();
@@ -75,13 +82,18 @@ export class VirtualFileSystem {
    */
   public resolveDirectory(segments: string[]): DirectoryRow | null {
     let currentId = 'root';
+
+    // SAFETY: SQLite query selects all columns from directories table matching DirectoryRow
     let currentDir: DirectoryRow | null = this.db
       .prepare('SELECT * FROM directories WHERE id = ?')
       .get('root') as DirectoryRow | null;
 
-    if (!currentDir) return null;
+    if (!currentDir) {
+      return null;
+    }
 
     for (const segment of segments) {
+      // SAFETY: SQLite query selects all columns from directories table matching DirectoryRow
       const child: DirectoryRow | null = this.db
         .prepare('SELECT * FROM directories WHERE parent_id = ? AND name = ?')
         .get(currentId, segment) as DirectoryRow | null;
@@ -89,6 +101,7 @@ export class VirtualFileSystem {
       if (!child) {
         return null;
       }
+
       currentDir = child;
       currentId = child.id;
     }
@@ -102,25 +115,36 @@ export class VirtualFileSystem {
   public resolveChatPointer(
     segments: string[]
   ): { pointer: ChatPointerRow; chat: ChatRow; dir: DirectoryRow } | null {
-    if (segments.length === 0) return null;
+    if (segments.length === 0) {
+      return null;
+    }
 
     const dirSegments = segments.slice(0, -1);
     const fileName = segments[segments.length - 1]!;
 
     const dir = this.resolveDirectory(dirSegments);
-    if (!dir) return null;
 
+    if (!dir) {
+      return null;
+    }
+
+    // SAFETY: SQLite query selects all columns from chat_pointers table matching ChatPointerRow
     const pointer: ChatPointerRow | null = this.db
       .prepare('SELECT * FROM chat_pointers WHERE directory_id = ? AND pointer_name = ?')
       .get(dir.id, fileName) as ChatPointerRow | null;
 
-    if (!pointer) return null;
+    if (!pointer) {
+      return null;
+    }
 
+    // SAFETY: SQLite query selects all columns from chats table matching ChatRow
     const chat: ChatRow | null = this.db
       .prepare('SELECT * FROM chats WHERE id = ?')
       .get(pointer.chat_id) as ChatRow | null;
 
-    if (!chat) return null;
+    if (!chat) {
+      return null;
+    }
 
     return { pointer, chat, dir };
   }
@@ -140,8 +164,35 @@ export class VirtualFileSystem {
       JOIN chat_pointers cp ON cp.directory_id = s.id
       JOIN chats c ON c.id = cp.chat_id;
     `;
+
+    // SAFETY: Aggregate query returns total_unread integer
     const row = this.db.prepare(query).get(dirId) as { total_unread: number } | undefined;
+
     return row ? row.total_unread : 0;
+  }
+
+  /**
+   * Calculates the latest message or chat activity timestamp across a directory and its subdirectories.
+   */
+  public getDirectoryLastActivity(dirId: string): number {
+    const query = `
+      WITH RECURSIVE subdirs(id) AS (
+        SELECT id FROM directories WHERE id = ?
+        UNION ALL
+        SELECT d.id FROM directories d JOIN subdirs s ON d.parent_id = s.id
+      )
+      SELECT COALESCE(MAX(m.timestamp), MAX(c.updated_at), d_self.created_at) as last_activity
+      FROM subdirs s
+      JOIN directories d_self ON d_self.id = ?
+      LEFT JOIN chat_pointers cp ON cp.directory_id = s.id
+      LEFT JOIN chats c ON c.id = cp.chat_id
+      LEFT JOIN messages m ON m.chat_id = c.id;
+    `;
+
+    // SAFETY: Aggregate query returns last_activity integer
+    const row = this.db.prepare(query).get(dirId, dirId) as { last_activity: number } | undefined;
+
+    return row ? row.last_activity : 0;
   }
 
   /**
@@ -150,6 +201,7 @@ export class VirtualFileSystem {
   public cd(targetPath?: string): string {
     if (!targetPath || targetPath === '~' || targetPath === '/') {
       this.currentPath = '/';
+
       return this.currentPath;
     }
 
@@ -159,95 +211,149 @@ export class VirtualFileSystem {
     if (!dir) {
       // Check if user tried to cd into a chat file
       const chatLookup = this.resolveChatPointer(segments);
+
       if (chatLookup) {
         throw new Error(`cd: not a directory: ${targetPath}`);
       }
+
       throw new Error(`cd: no such file or directory: ${targetPath}`);
     }
 
     this.currentPath = this.segmentsToPath(segments);
+
     return this.currentPath;
   }
 
   /**
    * Lists the contents of a directory.
+   * Default sorting: descending by last message / activity timestamp.
    */
-  public ls(targetPath?: string, options: { all?: boolean } = {}): VfsEntry[] {
+  public ls(
+    targetPath?: string,
+    options: { all?: boolean | undefined; sort?: 'time' | 'name' | undefined; reverse?: boolean | undefined } = {}
+  ): VfsEntry[] {
     const segments = this.normalizePath(targetPath);
     const dir = this.resolveDirectory(segments);
 
     if (!dir) {
       // If targetPath is a single chat file, return just that file
       const chatLookup = this.resolveChatPointer(segments);
+
       if (chatLookup) {
         return [
           {
             name: chatLookup.pointer.pointer_name,
             type: 'chat',
             chatType: chatLookup.chat.chat_type,
+            platform: chatLookup.chat.platform_id,
             unreadCount: chatLookup.chat.unread_count,
             isHidden: chatLookup.pointer.pointer_name.startsWith('.'),
             updatedAt: chatLookup.chat.updated_at,
           },
         ];
       }
+
       throw new Error(`ls: cannot access '${targetPath ?? ''}': No such file or directory`);
     }
 
     const entries: VfsEntry[] = [];
 
     // 1. Fetch child directories
+    // SAFETY: SQLite query selects all columns from directories table matching DirectoryRow
     const subdirs = this.db
-      .prepare('SELECT * FROM directories WHERE parent_id = ? ORDER BY name ASC')
+      .prepare('SELECT * FROM directories WHERE parent_id = ?')
       .all(dir.id) as DirectoryRow[];
 
     for (const sub of subdirs) {
       const isHidden = sub.name.startsWith('.') || sub.is_hidden === 1;
+
       if (isHidden && !options.all) {
         continue;
       }
+
       const unreadCount = this.getDirectoryUnreadCount(sub.id);
+      const lastActivity = this.getDirectoryLastActivity(sub.id);
       entries.push({
         name: sub.name + '/',
         type: 'directory',
         unreadCount,
         isHidden,
         isSystemRoot: sub.is_system_root === 1,
-        updatedAt: sub.created_at,
+        updatedAt: lastActivity,
       });
     }
 
-    // 2. Fetch chat pointers in this directory
+    // 2. Fetch chat pointers with latest message/activity timestamp
+    // SAFETY: Database query selects columns matching pointer listing structure
     const pointers = this.db
       .prepare(
         `
-        SELECT cp.pointer_name, c.chat_type, c.unread_count, c.updated_at
+        SELECT 
+          cp.pointer_name, 
+          c.chat_type, 
+          c.platform_id,
+          c.unread_count, 
+          COALESCE(MAX(m.timestamp), NULLIF(c.updated_at, 0), NULL) as last_activity
         FROM chat_pointers cp
         JOIN chats c ON c.id = cp.chat_id
+        LEFT JOIN messages m ON m.chat_id = c.id
         WHERE cp.directory_id = ?
-        ORDER BY cp.pointer_name ASC
+        GROUP BY cp.id
       `
       )
       .all(dir.id) as {
       pointer_name: string;
       chat_type: string;
+      platform_id: PlatformId;
       unread_count: number;
-      updated_at: number;
+      last_activity: number;
     }[];
 
     for (const ptr of pointers) {
       const isHidden = ptr.pointer_name.startsWith('.');
+
       if (isHidden && !options.all) {
         continue;
       }
+
       entries.push({
         name: ptr.pointer_name,
         type: 'chat',
         chatType: ptr.chat_type,
+        platform: ptr.platform_id,
         unreadCount: ptr.unread_count,
         isHidden,
-        updatedAt: ptr.updated_at,
+        updatedAt: ptr.last_activity,
       });
+    }
+
+    // 3. Sorting (default: descending by last message/activity timestamp)
+    const sortBy = options.sort ?? 'time';
+    const reverse = !!options.reverse;
+
+    entries.sort((a, b) => {
+      if (sortBy === 'time') {
+        const timeA = a.updatedAt || 0;
+        const timeB = b.updatedAt || 0;
+
+        if (timeA > 0 && timeB > 0) {
+          if (timeB !== timeA) {
+            return timeB - timeA; // Most recent first
+          }
+        } else if (timeA > 0 && timeB === 0) {
+          return -1; // a has messages, b does not -> a comes first
+        } else if (timeA === 0 && timeB > 0) {
+          return 1; // b has messages, a does not -> b comes first
+        }
+
+        return a.name.localeCompare(b.name);
+      } else {
+        return a.name.localeCompare(b.name); // Ascending by name
+      }
+    });
+
+    if (reverse) {
+      entries.reverse();
     }
 
     return entries;
@@ -258,6 +364,7 @@ export class VirtualFileSystem {
    */
   public mkdir(targetPath: string, options: { recursive?: boolean } = {}): string {
     const segments = this.normalizePath(targetPath);
+
     if (segments.length === 0) {
       throw new Error(`mkdir: cannot create root directory`);
     }
@@ -267,6 +374,7 @@ export class VirtualFileSystem {
       const dirName = segments[segments.length - 1]!;
 
       const parent = this.resolveDirectory(parentSegments);
+
       if (!parent) {
         throw new Error(`mkdir: cannot create directory '${targetPath}': No such file or directory`);
       }
@@ -275,6 +383,7 @@ export class VirtualFileSystem {
       const existingDir = this.db
         .prepare('SELECT id FROM directories WHERE parent_id = ? AND name = ?')
         .get(parent.id, dirName);
+
       if (existingDir) {
         throw new Error(`mkdir: cannot create directory '${targetPath}': File exists`);
       }
@@ -282,6 +391,7 @@ export class VirtualFileSystem {
       const existingPtr = this.db
         .prepare('SELECT id FROM chat_pointers WHERE directory_id = ? AND pointer_name = ?')
         .get(parent.id, dirName);
+
       if (existingPtr) {
         throw new Error(`mkdir: cannot create directory '${targetPath}': File exists`);
       }
@@ -306,6 +416,8 @@ export class VirtualFileSystem {
 
     for (const segment of segments) {
       pathAccum.push(segment);
+
+      // SAFETY: Query returns directory id
       let existing = this.db
         .prepare('SELECT id FROM directories WHERE parent_id = ? AND name = ?')
         .get(currentId, segment) as { id: string } | undefined;
@@ -335,11 +447,13 @@ export class VirtualFileSystem {
    */
   public rmdir(targetPath: string): void {
     const segments = this.normalizePath(targetPath);
+
     if (segments.length === 0) {
       throw new Error(`rmdir: cannot remove root directory`);
     }
 
     const dir = this.resolveDirectory(segments);
+
     if (!dir) {
       throw new Error(`rmdir: failed to remove '${targetPath}': No such file or directory`);
     }
@@ -349,17 +463,21 @@ export class VirtualFileSystem {
     }
 
     // Check if directory has child directories
+    // SAFETY: COUNT(*) aggregate returns numeric count
     const subdirs = this.db
       .prepare('SELECT COUNT(*) as count FROM directories WHERE parent_id = ?')
       .get(dir.id) as { count: number };
+
     if (subdirs.count > 0) {
       throw new Error(`rmdir: failed to remove '${targetPath}': Directory not empty`);
     }
 
     // Check if directory has chat pointers
+    // SAFETY: COUNT(*) aggregate returns numeric count
     const pointers = this.db
       .prepare('SELECT COUNT(*) as count FROM chat_pointers WHERE directory_id = ?')
       .get(dir.id) as { count: number };
+
     if (pointers.count > 0) {
       throw new Error(`rmdir: failed to remove '${targetPath}': Directory not empty`);
     }
@@ -370,18 +488,21 @@ export class VirtualFileSystem {
   /**
    * Reads chat history for a chat pointer.
    */
-  public cat(targetPath: string, limit = 50): { chat: ChatRow; messages: ChatMessage[] } {
+  public cat(targetPath: string, limit = 50): CatChatResult {
     const segments = this.normalizePath(targetPath);
     const lookup = this.resolveChatPointer(segments);
 
     if (!lookup) {
       const dirLookup = this.resolveDirectory(segments);
+
       if (dirLookup) {
         throw new Error(`cat: ${targetPath}: Is a directory`);
       }
+
       throw new Error(`cat: ${targetPath}: No such file or directory`);
     }
 
+    // SAFETY: Query returns message rows matching projection
     const rows = this.db
       .prepare(
         `
@@ -441,6 +562,7 @@ export class VirtualFileSystem {
     let chosenName = baseName;
 
     // Check collision and assign -2, -3 suffix if necessary
+    // SAFETY: Query returns pointer_name strings
     const existing = this.db
       .prepare('SELECT pointer_name FROM chat_pointers WHERE directory_id = ?')
       .all(targetDir.id) as { pointer_name: string }[];
@@ -454,9 +576,11 @@ export class VirtualFileSystem {
       const ext = lastDot > 0 ? baseName.slice(lastDot) : '';
 
       let counter = 2;
+
       while (nameSet.has(`${rawName}-${counter}${ext}`)) {
         counter++;
       }
+
       chosenName = `${rawName}-${counter}${ext}`;
     }
 
@@ -482,9 +606,11 @@ export class VirtualFileSystem {
 
     if (!lookup) {
       const dirLookup = this.resolveDirectory(segments);
+
       if (dirLookup) {
         throw new Error(`rm: cannot remove '${targetPath}': Is a directory (use rmdir)`);
       }
+
       throw new Error(`rm: cannot remove '${targetPath}': No such file or directory`);
     }
 
@@ -509,6 +635,7 @@ export class VirtualFileSystem {
 
     // Check if source is a directory
     const srcDir = this.resolveDirectory(srcSegments);
+
     if (srcDir) {
       if (srcDir.is_system_root === 1) {
         throw new Error(`mv: cannot move system root directory`);
@@ -516,11 +643,13 @@ export class VirtualFileSystem {
 
       // Check if dest is an existing directory -> move inside it
       const destDir = this.resolveDirectory(destSegments);
+
       if (destDir) {
         // Move srcDir inside destDir keeping its current name
         this.db
           .prepare('UPDATE directories SET parent_id = ? WHERE id = ?')
           .run(destDir.id, srcDir.id);
+
         return;
       }
 
@@ -536,11 +665,13 @@ export class VirtualFileSystem {
       this.db
         .prepare('UPDATE directories SET parent_id = ?, name = ? WHERE id = ?')
         .run(destParent.id, newName, srcDir.id);
+
       return;
     }
 
     // Check if source is a chat pointer
     const srcPtr = this.resolveChatPointer(srcSegments);
+
     if (srcPtr) {
       if (srcPtr.dir.is_system_root === 1) {
         throw new Error(`mv: cannot move chat pointer out of system archive root`);
@@ -548,10 +679,12 @@ export class VirtualFileSystem {
 
       // If dest is an existing directory, move pointer into it
       const destDir = this.resolveDirectory(destSegments);
+
       if (destDir) {
         this.db
           .prepare('UPDATE chat_pointers SET directory_id = ? WHERE id = ?')
           .run(destDir.id, srcPtr.pointer.id);
+
         return;
       }
 
@@ -567,6 +700,7 @@ export class VirtualFileSystem {
       this.db
         .prepare('UPDATE chat_pointers SET directory_id = ?, pointer_name = ? WHERE id = ?')
         .run(destParent.id, newName, srcPtr.pointer.id);
+
       return;
     }
 
@@ -591,6 +725,7 @@ export class VirtualFileSystem {
     }
 
     const srcDir = this.resolveDirectory(srcSegments);
+
     if (!srcDir) {
       throw new Error(`cp: cannot stat '${sourcePath}': No such file or directory`);
     }
@@ -617,6 +752,7 @@ export class VirtualFileSystem {
         .run(newId, folderName, targetParentId, Date.now());
 
       // Clone pointers
+      // SAFETY: Query returns ChatPointerRow records
       const pointers = this.db
         .prepare('SELECT * FROM chat_pointers WHERE directory_id = ?')
         .all(sourceDirId) as ChatPointerRow[];
@@ -634,6 +770,7 @@ export class VirtualFileSystem {
       }
 
       // Clone subdirectories
+      // SAFETY: Query returns DirectoryRow records
       const subdirs = this.db
         .prepare('SELECT * FROM directories WHERE parent_id = ?')
         .all(sourceDirId) as DirectoryRow[];

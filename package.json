@@ -1,0 +1,44 @@
+{
+  "name": "open-chat",
+  "version": "0.0.1",
+  "description": "Chat Aggregator",
+  "homepage": "https://github.com/Open-Souce-Alt/Open-Chat#readme",
+  "bugs": {
+    "url": "https://github.com/Open-Souce-Alt/Open-Chat/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Open-Souce-Alt/Open-Chat.git"
+  },
+  "license": "Unlicense",
+  "author": "aasishraj",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "daemon": "tsc && node ./dist/server/index.js",
+    "cli": "tsc && node ./dist/cli/index.js",
+    "test": "tsc && node ./dist/test/verify-slice1.js && node ./dist/test/verify-phase2.js && node ./dist/test/verify-phase3.js && node ./dist/test/verify-autocomplete.js"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "^1.92.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.2",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/ws": "^8.18.2",
+    "eslint": "^10.11.0",
+    "oxlint": "^1.92.0",
+    "prettier": "^3.9.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^7.0.2"
+  },
+  "keywords": [],
+  "dependencies": {
+    "@fastify/websocket": "^11.3.7",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "better-sqlite3": "^13.0.3",
+    "fastify": "^5.12.8",
+    "pino": "^10.4.0",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.22.1"
+  }
+}
