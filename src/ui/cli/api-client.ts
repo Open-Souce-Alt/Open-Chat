@@ -336,6 +336,20 @@ export class ApiClient {
     return { accountId: String(json.accountId || '') };
   }
 
+  public async submitChallengeResponse(accountId: string, response: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/api/auth/challenge-response`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId, response }),
+    });
+
+    const json = await parseResponseJson(res);
+
+    if (!res.ok) {
+      throw new Error(json.error || 'Failed to submit challenge response');
+    }
+  }
+
   public async listAccounts(): Promise<AccountRow[]> {
     const res = await fetch(`${this.baseUrl}/api/auth/accounts`);
     const json = await parseResponseJson(res);

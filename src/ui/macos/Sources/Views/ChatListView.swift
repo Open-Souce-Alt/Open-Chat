@@ -86,6 +86,8 @@ public struct ChatListView: View {
         switch platform {
         case "whatsapp":
             return Color.green
+        case "instagram":
+            return Color.pink
         case "system":
             return Color.purple
         default:
@@ -97,6 +99,8 @@ public struct ChatListView: View {
         switch platform {
         case "whatsapp":
             return "message.fill"
+        case "instagram":
+            return "camera.fill"
         case "system":
             return "gearshape.fill"
         default:

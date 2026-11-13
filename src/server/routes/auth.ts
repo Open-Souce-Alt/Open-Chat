@@ -37,6 +37,29 @@ export function registerAuthRoutes(app: FastifyInstance, authManager: AuthManage
     return { accounts };
   });
 
+  // POST /api/auth/challenge-response { accountId, response }
+  app.post<{
+    Body: { accountId: string; response: string };
+  }>('/api/auth/challenge-response', async (request, reply) => {
+    try {
+      const { accountId, response } = request.body ?? {};
+
+      if (!accountId || !response) {
+        reply.status(400);
+
+        return { error: 'auth/challenge-response: missing accountId or response parameter' };
+      }
+
+      await authManager.submitChallengeResponse(accountId, response);
+
+      return { success: true, accountId };
+    } catch (err: unknown) {
+      reply.status(400);
+
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // POST /api/auth/disconnect { accountId }
   app.post<{
     Body: { accountId: string };

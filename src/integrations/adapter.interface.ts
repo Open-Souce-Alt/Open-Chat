@@ -1,4 +1,4 @@
-export type PlatformId = 'whatsapp' | 'system';
+export type PlatformId = 'whatsapp' | 'instagram' | 'system';
 
 export type AuthChallengeType = 'qr_code' | 'otp_input' | 'credentials' | 'web_view_url';
 
@@ -51,6 +51,7 @@ export interface PlatformAdapter {
   disconnect(): Promise<void>;
   listChats(): Promise<NormalizedChat[]>;
   fetchRecentMessages(externalChatId: string, limit?: number): Promise<NormalizedMessage[]>;
+  submitChallengeResponse?(response: string): Promise<void>;
   onChatsUpdated?(callback: () => void): void;
   onChatUnreadUpdated?(callback: (externalId: string, unreadCount: number) => void): void;
 }

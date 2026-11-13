@@ -121,6 +121,7 @@ const SHELL_COMMANDS = [
   'mv',
   'cp',
   'connect',
+  'challenge',
   'status',
   'clear',
   'help',
@@ -217,7 +218,8 @@ ${colors.bold}Open Chat - Virtual Shell Commands:${colors.reset}
   ${colors.green}rm <chat_pointer>${colors.reset}     Remove chat pointer from folder (source preserved)
   ${colors.green}mv <src> <dest>${colors.reset}       Move or rename directory or chat pointer
   ${colors.green}cp -r <src> <dest>${colors.reset}    Recursively duplicate directory and pointers
-  ${colors.green}connect <plat> [lbl]${colors.reset} Connect a platform account (e.g. 'connect whatsapp personal')
+  ${colors.green}connect <plat> [lbl]${colors.reset} Connect a platform (e.g. 'connect instagram personal --mock')
+  ${colors.green}challenge <id> <code>${colors.reset} Submit 2FA / OTP verification code for an account
   ${colors.green}status${colors.reset}                Display connected accounts and daemon status
   ${colors.green}clear${colors.reset}                 Clear terminal screen
   ${colors.green}help${colors.reset}                  Display this help reference
@@ -240,7 +242,13 @@ ${colors.bold}Open Chat - Virtual Shell Commands:${colors.reset}
           console.log(`${colors.yellow}Scan this QR code with WhatsApp (Settings > Linked Devices)${colors.reset}\n`);
         });
       } else {
-        console.log(`${colors.yellow}${event.challenge.prompt || event.challenge.data}${colors.reset}\n`);
+        console.log(`${colors.yellow}${event.challenge.prompt || event.challenge.data}${colors.reset}`);
+
+        if (event.challenge.challengeType === 'otp_input') {
+          console.log(`${colors.cyan}To submit your code, run:${colors.reset} challenge ${event.accountId} <code>\n`);
+        } else {
+          console.log();
+        }
       }
 
       rl.setPrompt(getPrompt());
@@ -516,6 +524,20 @@ Type ${colors.green}help${colors.reset} for command reference, or ${colors.green
           } else {
             console.log(`${colors.dim}Initiating connection to ${platform} (${label})...${colors.reset}`);
             await client.connectAuth(platform, label, isMock, isClean);
+          }
+
+          break;
+        }
+
+        case 'challenge': {
+          const accountId = args[1];
+          const code = args[2];
+
+          if (!accountId || !code) {
+            console.error(`${colors.red}challenge: usage: challenge <accountId> <verification_code>${colors.reset}`);
+          } else {
+            console.log(`${colors.dim}Submitting challenge response for ${accountId}...${colors.reset}`);
+            await client.submitChallengeResponse(accountId, code);
           }
 
           break;

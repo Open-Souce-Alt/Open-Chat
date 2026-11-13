@@ -3,8 +3,10 @@ import { type EventBroadcaster } from '../../server/events.js';
 import { type PlatformAdapter } from '../../integrations/adapter.interface.js';
 import { WhatsAppAdapter } from '../../integrations/whatsapp/whatsapp.js';
 import { MockWhatsAppAdapter } from '../../integrations/whatsapp/mock.js';
+import { InstagramAdapter } from '../../integrations/instagram/instagram.js';
+import { MockInstagramAdapter } from '../../integrations/instagram/mock.js';
 import { SyncEngine } from '../sync/sync-engine.js';
-import { type AccountRow } from '../db/schema.js';
+import { type AccountRow, type PlatformId } from '../db/schema.js';
 
 export class AuthManager {
   private db: Database;
@@ -28,18 +30,27 @@ export class AuthManager {
     const platform = params.platform.toLowerCase();
     const accountLabel = (params.accountLabel || 'personal').toLowerCase();
 
-    if (platform !== 'whatsapp') {
-      throw new Error(`Platform '${platform}' is not supported yet. Only 'whatsapp' is available.`);
+    if (platform !== 'whatsapp' && platform !== 'instagram') {
+      throw new Error(`Platform '${platform}' is not supported yet. Only 'whatsapp' and 'instagram' are available.`);
     }
 
-    const platformId = 'whatsapp' as const;
+    // SAFETY: platform is validated against 'whatsapp' and 'instagram' above
+    const platformId = platform as PlatformId;
     const accountId = `acc_${platformId}_${accountLabel}`;
 
     const useMock = params.mock === true || process.env.OPENCHAT_MOCK_AUTH === '1';
 
-    const adapter: PlatformAdapter = useMock
-      ? new MockWhatsAppAdapter(accountLabel, params.autoAuthDelayMs ?? 800)
-      : new WhatsAppAdapter(accountLabel);
+    let adapter: PlatformAdapter;
+
+    if (platformId === 'whatsapp') {
+      adapter = useMock
+        ? new MockWhatsAppAdapter(accountLabel, params.autoAuthDelayMs ?? 800)
+        : new WhatsAppAdapter(accountLabel);
+    } else {
+      adapter = useMock
+        ? new MockInstagramAdapter(accountLabel, params.autoAuthDelayMs ?? 600)
+        : new InstagramAdapter(accountLabel);
+    }
 
     this.activeAdapters.set(accountId, adapter);
 
@@ -136,6 +147,20 @@ export class AuthManager {
       });
 
     return { accountId };
+  }
+
+  public async submitChallengeResponse(accountId: string, response: string): Promise<void> {
+    const adapter = this.activeAdapters.get(accountId);
+
+    if (!adapter) {
+      throw new Error(`No active adapter session found for account: ${accountId}`);
+    }
+
+    if (!adapter.submitChallengeResponse) {
+      throw new Error(`Platform adapter for ${accountId} does not support challenge responses.`);
+    }
+
+    await adapter.submitChallengeResponse(response);
   }
 
   public async disconnect(accountId: string): Promise<void> {

@@ -19,7 +19,7 @@
     "cli": "tsc && node ./dist/ui/cli/index.js",
     "macos:build": "cd src/ui/macos && swift build",
     "macos:run": "cd src/ui/macos && swift run OpenChatApp",
-    "test": "tsc && node ./dist/test/verify-slice1.js && node ./dist/test/verify-phase2.js && node ./dist/test/verify-phase3.js && node ./dist/test/verify-autocomplete.js"
+    "test": "tsc && node ./dist/test/verify-slice1.js && node ./dist/test/verify-phase2.js && node ./dist/test/verify-phase3.js && node ./dist/test/verify-autocomplete.js && node ./dist/test/verify-instagram.js"
   },
   "devDependencies": {
     "@oxlint/plugins": "^1.92.0",
@@ -39,6 +39,7 @@
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "better-sqlite3": "^13.0.3",
     "fastify": "^5.12.8",
+    "instagram-private-api": "^1.46.1",
     "pino": "^10.4.0",
     "qrcode-terminal": "^0.12.0",
     "ws": "^8.22.1"

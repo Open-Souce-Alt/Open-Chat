@@ -1,4 +1,4 @@
-export type PlatformId = 'whatsapp' | 'system';
+export type PlatformId = 'whatsapp' | 'instagram' | 'system';
 
 export interface AccountRow {
   id: string;

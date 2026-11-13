@@ -40,8 +40,8 @@ Initial host operating system: macOS.
 ### 2.1 Aggregation Engine (Backend Daemon)
 - **Runtime**: Independent process decoupled from UI lifecycles. Can execute locally on macOS or be hosted remotely on a Linux/macOS VPS.
 - **Integration Strategy**:
-  - Phase 1: Connect via protocol-level WebSocket libraries (e.g., `@whiskeysockets/baileys`). Browser automation (Puppeteer/wppconnect) is avoided to prevent client-side anti-bot flags and account-wide device session revocation.
-  - Phase 2: Gradually replace 3rd-party dependencies with custom in-house extensions.
+  - Goal 1: Connect via protocol-level WebSocket libraries (WhatsApp via `@whiskeysockets/baileys`) and direct API wrappers (Instagram Direct via `instagram-private-api`). Browser automation (Puppeteer/wppconnect) is avoided to prevent client-side anti-bot flags and account-wide device session revocation.
+  - Goal 2+: Gradually replace 3rd-party dependencies with custom in-house extensions.
 - **Responsibility**:
   - Connect to external chat platforms via integration modules.
   - Normalize incoming chat payloads into uniform data structures.
@@ -70,7 +70,7 @@ The relationship between directories and chats is a **many-to-many Directed Acyc
   - The system supports connecting multiple accounts for the same platform concurrently.
 - **Chat Node ("Canonical File")**: 
   - Represents an atomic, platform-independent conversation unit tied to an `Account`.
-  - Exposes a strict typed platform identifier (`PlatformId = 'whatsapp' | 'system'`) rather than generic string, allowing custom frontends to render native platform icons, badges, and filters.
+  - Exposes a strict typed platform identifier (`PlatformId = 'whatsapp' | 'instagram' | 'system'`) rather than generic string, allowing custom frontends to render native platform icons, badges, and filters.
   - Carries a **Chat Type** analogous to a "file extension" (e.g., `direct_message`, `group`, `channel`, `broadcast_list`, `thread`).
   - Holds reference to origin account/adapter, but UI/shell treats operations uniformly.
 - **Directory ("Folder / Category")**: 
@@ -218,7 +218,7 @@ The engine abstracts platform specifics through a unified state machine.
 ```
 +--------------------+      WebSocket Event          +--------------------+
 |  Platform Adapter  |  -------------------------->  |    Client Layer    |
-| (baileys, etc.)    |  <--------------------------  | (CLI REPL / Swift) |
+| (baileys, instagram) |  <--------------------------  | (CLI REPL / Swift) |
 +--------------------+     HTTP / WS Action          +--------------------+
 ```
 
