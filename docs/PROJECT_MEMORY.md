@@ -27,6 +27,8 @@ This document tracks all project requirements, constraints, and architecture dec
 | **Interactivity & Receipts** | Bidirectional; Optional Receipts | Sending messages and replies back to external platforms is supported. Outbound read receipts (blue ticks) are optional/stealth by design (deferred from Phase 1). | DIR-012, DIR-029 |
 | **Sync Strategy** | Complete Discovery + Continuous Sync | On connection: complete discovery of all contacts/groups into SQLite and system root; shallow message sync (latest 20–50 messages per chat); lazy on-demand backfill for older history. Mobile phone history chunks and DMs stream continuously into SQLite as they arrive (`onChatsUpdated`). Inbound read events on mobile (`chats.update`) synchronize unread counts to 0 live. | DIR-027, DIR-039, DIR-040 |
 | **Auth Architecture** | Normalized State Machine & Protocol Sockets | Engine abstracts platform login flows (QR codes, SMS OTP, credentials) into a universal state machine streamed over WebSocket/HTTP. WhatsApp integration strictly uses protocol-level WebSockets (`@whiskeysockets/baileys`) rather than headless browser automation to prevent bot detection and account-wide companion device revocation. Handles protocol-level post-pairing reconnect handshakes (`restartRequired: 515`) automatically. | DIR-013, DIR-014, DIR-035, DIR-036 |
+| **Workflow & Task Tracking** | GitHub Projects & Issues-Driven | All feature requests, roadmap milestones, and discovered issues are tracked on GitHub Project #1 (https://github.com/orgs/Open-Souce-Alt/projects/1) and GitHub Issues. The agent inspects the board, picks ready tasks, updates card status (Backlog -> Ready -> In progress -> Done), and references issue numbers in commit messages. | DIR-044 |
+| **VCS & Release Policy** | Conventional Commits & Autonomous Issue Push | Changes are committed using Conventional Commits and pushed to origin/main upon verified completion of tasks, issues, and slices. | DIR-045 |
 
 ---
 
@@ -76,6 +78,9 @@ This document tracks all project requirements, constraints, and architecture dec
 | DIR-040 | Mobile Read Receipt Sync | Listen for WhatsApp `chats.update` events so messages viewed on mobile app immediately reset unread count to 0 in SQLite and update parent directories live. | Bug Fix | Active |
 | DIR-041 | Typed Platform Enum | Platform is defined as a strict union type (`PlatformId = 'whatsapp' | 'system'`) rather than generic string, ensuring compile-time safety and clean UI package extensions. | Refinement | Active |
 | DIR-042 | UI Layer Package Locations | Presentation packages live under `./src/ui/`: CLI shell in `./src/ui/cli/` and native macOS SwiftUI app in `./src/ui/macos/`. Both connect strictly as network clients to the engine daemon. | Goal 2 Directive | Active |
+| DIR-043 | Explicit Commit & Push Permission | Commits, squashes into published history, and git/jj pushes require explicit user authorization beforehand. | Operational Directive | Superseded by DIR-045 |
+| DIR-044 | GitHub Projects & Issue-Driven Workflow | Development requirements and backlog are tracked on GitHub Project #1 (https://github.com/orgs/Open-Souce-Alt/projects/1) and repository issues. The assistant reads issues, can open discovered issues/cards, updates card status (Backlog -> Ready -> In progress -> Done), and links conventional commits to issues. | Workflow Directive | Active |
+| DIR-045 | Autonomous Commit & Push for Task Slices | With the GitHub Projects issue-driven workflow active, commits and pushes proceed autonomously upon verified completion of each issue, task, or slice using Conventional Commits. | Workflow Directive | Active (Supersedes DIR-043) |
 
 ---
 

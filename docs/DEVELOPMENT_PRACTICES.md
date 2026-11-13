@@ -28,6 +28,13 @@ Consult this document to maintain consistency across development sessions.
 - Avoid filler words, marketing language, and conversational preambles.
 - Optimize documentation for low token consumption and fast LLM parsing.
 
+### 1.4 GitHub Projects & Issue-Driven Development
+- Central project board: [Open-Souce-Alt/projects/1](https://github.com/orgs/Open-Souce-Alt/projects/1).
+- Board workflow stages: `Backlog` $\rightarrow$ `Ready` $\rightarrow$ `In progress` $\rightarrow$ `In review` $\rightarrow$ `Done`.
+- User specifies requirements, bug reports, and roadmap priorities as issues linked to Project #1.
+- Agent investigates issues, moves cards to `In progress`, implements vertical slices, runs tests, and updates cards to `Done` referencing issue numbers in commit messages.
+- Agent files discovered bugs or technical debt as new issues and links them to the board.
+
 ---
 
 ## 2. Version Control Workflow (Jujutsu / `jj`)
@@ -58,6 +65,11 @@ The project uses Jujutsu (`jj`) colocated with Git for local-first version contr
   - `tools/`
   - `.oxlintrc.json`
   - `skills-lock.json`
+
+### 2.4 Autonomous Commits and Pushes for Task Slices
+- With the GitHub Projects issue-driven workflow adopted, the assistant commits and pushes autonomously upon verified completion of each issue, task, or vertical slice.
+- Commits must use Conventional Commits and reference issue numbers when applicable (e.g. `feat(core): ... (closes #X)`).
+- Before committing and pushing, all validation gates (`npx oxlint --import-plugin`, `npx tsc`, and `npm test`) must pass cleanly.
 
 ---
 
