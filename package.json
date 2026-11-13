@@ -16,9 +16,9 @@
   "main": "index.js",
   "scripts": {
     "daemon": "tsc && node ./dist/server/index.js",
-    "cli": "tsc && node ./dist/cli/index.js",
-    "macos:build": "cd src/macos && swift build",
-    "macos:run": "cd src/macos && swift run OpenChatApp",
+    "cli": "tsc && node ./dist/ui/cli/index.js",
+    "macos:build": "cd src/ui/macos && swift build",
+    "macos:run": "cd src/ui/macos && swift run OpenChatApp",
     "test": "tsc && node ./dist/test/verify-slice1.js && node ./dist/test/verify-phase2.js && node ./dist/test/verify-phase3.js && node ./dist/test/verify-autocomplete.js"
   },
   "devDependencies": {

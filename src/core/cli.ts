@@ -1,1 +1,1 @@
-export * from '../cli/index.js';
+export * from '../ui/cli/index.js';

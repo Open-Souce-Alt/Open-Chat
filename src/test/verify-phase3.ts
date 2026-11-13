@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { createServer, type ServerInstance } from '../server/server.js';
-import { ApiClient } from '../cli/api-client.js';
+import { ApiClient } from '../ui/cli/api-client.js';
 import {
   type ServerEvent,
   type AuthChallengeEvent,

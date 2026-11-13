@@ -1,7 +1,7 @@
 # Phase 4: Native macOS Application (Swift & SwiftUI)
 
 ## 1. Objective
-Deliver the native macOS GUI application in `./src/macos/` conforming to the 2-tier architecture:
+Deliver the native macOS GUI application in `./src/ui/macos/` conforming to the 2-tier architecture:
 1. Pure presentation layer in Swift / SwiftUI with zero direct database access.
 2. 3-column Finder-inspired navigation split view (Directory Tree $\rightarrow$ Chat Files $\rightarrow$ Conversation Thread).
 3. Connects to the Core Engine Daemon via HTTP REST (`http://127.0.0.1:3000`) and subscribes to real-time events via `URLSessionWebSocketTask` (`/ws`).
@@ -10,14 +10,14 @@ Deliver the native macOS GUI application in `./src/macos/` conforming to the 2-t
 
 ## 2. Directory Layout & Tech Stack
 
-- **Location**: `./src/macos/`
+- **Location**: `./src/ui/macos/`
 - **Build System**: Swift Package Manager (`Package.swift` executable target).
 - **Target OS**: macOS 13.0+ (Ventura / Sonoma / Sequoia).
 - **UI Framework**: SwiftUI (`NavigationSplitView`).
 - **Network Engine**: Native `URLSession` + `URLSessionWebSocketTask` (no third-party dependencies required).
 
 ```
-src/macos/
+src/ui/macos/
 ├── Package.swift
 └── Sources/
     ├── App.swift                  # App entrypoint (@main)
@@ -79,7 +79,7 @@ Build the SwiftPM package foundation, the `OpenChatClient` networking layer, and
 
 ### 4.2 User Acceptance Criteria
 1. Start engine daemon: `npm run daemon`.
-2. In `./src/macos/`, run: `swift run OpenChatApp`.
+2. In `./src/ui/macos/`, run: `swift run OpenChatApp`.
 3. Native macOS window opens.
 4. **Sidebar**: Displays `/Personal`, `/Work`, and toggle for hidden archives (`/.whatsapp-personal/`).
 5. **Chat List**: Selecting a directory populates the chat list sorted by last activity, showing contact names, `[whatsapp]` / `[system]` badges, and formatted timestamps.

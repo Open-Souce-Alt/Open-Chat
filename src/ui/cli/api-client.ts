@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
-import { type VfsEntry, type ChatMessage } from '../core/vfs/vfs.js';
-import { type ServerEvent } from '../server/events.js';
-import { type AccountRow } from '../core/db/schema.js';
+import { type VfsEntry, type ChatMessage } from '../../core/vfs/vfs.js';
+import { type ServerEvent } from '../../server/events.js';
+import { type AccountRow } from '../../core/db/schema.js';
 
 export interface CatResult {
   chat: {

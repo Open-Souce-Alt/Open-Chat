@@ -1,7 +1,7 @@
 import * as readline from 'readline';
 import qrcode from 'qrcode-terminal';
 import { type ApiClient } from './api-client.js';
-import { type VfsEntry } from '../core/vfs/vfs.js';
+import { type VfsEntry } from '../../core/vfs/vfs.js';
 
 // ANSI color helpers
 const colors = {

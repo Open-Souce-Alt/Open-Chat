@@ -53,8 +53,8 @@ Initial host operating system: macOS.
   - Connects to the engine using a configurable backend base URL (e.g., `http://localhost:3000` or `https://remote-vps:3000`).
   - Pure presentation layer with zero direct database (SQLite) access.
 - **Form Factors**:
-  - Goal 1 (Complete): CLI application (Node / TypeScript in `./src/cli/`).
-  - Goal 2 (Current): Native macOS application (Swift 6 / SwiftUI in `./src/macos/`).
+  - Goal 1 (Complete): CLI application (Node / TypeScript in `./src/ui/cli/`).
+  - Goal 2 (Current): Native macOS application (Swift 6 / SwiftUI in `./src/ui/macos/`).
 
 ---
 
