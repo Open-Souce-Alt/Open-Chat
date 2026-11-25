@@ -38,6 +38,7 @@ export class WhatsAppAdapter implements PlatformAdapter {
   private status: AuthStatus = 'idle';
   private sock: WASocket | null = null;
   private isExplicitDisconnect: boolean = false;
+  private preAuthFailures: number = 0;
   private discoveredChats: Map<string, WhatsAppChatInfo> = new Map();
   private contacts: Map<string, string> = new Map();
   private lidToPn: Map<string, string> = new Map();
@@ -78,6 +79,7 @@ export class WhatsAppAdapter implements PlatformAdapter {
     clean?: boolean | undefined
   ): Promise<void> {
     this.isExplicitDisconnect = false;
+    this.preAuthFailures = 0;
     this.status = 'starting';
     onStatus('starting');
 
@@ -118,8 +120,8 @@ export class WhatsAppAdapter implements PlatformAdapter {
         auth: state,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        // Legitimate WhatsApp Desktop macOS companion device descriptor
-        browser: Browsers.macOS('Desktop'),
+        // Chrome browser descriptor avoids WhatsApp 428 Connection Terminated during QR registration
+        browser: Browsers.macOS('Chrome'),
         syncFullHistory: true, // Enables full history sync for 1-on-1 DMs and contacts
         generateHighQualityLinkPreview: false,
       });
@@ -132,6 +134,7 @@ export class WhatsAppAdapter implements PlatformAdapter {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
+          this.preAuthFailures = 0;
           this.status = 'awaiting_challenge';
           onStatus('awaiting_challenge');
           onChallenge({
@@ -143,6 +146,7 @@ export class WhatsAppAdapter implements PlatformAdapter {
         }
 
         if (connection === 'open') {
+          this.preAuthFailures = 0;
           this.status = 'authenticated';
           onStatus('authenticated');
         } else if (connection === 'close') {
@@ -165,6 +169,18 @@ export class WhatsAppAdapter implements PlatformAdapter {
             this.status = 'disconnected';
             onStatus('disconnected', 'Session expired or logged out by device. Run connect again to pair.');
           } else {
+            if (this.status === 'starting') {
+              this.preAuthFailures++;
+
+              if (this.preAuthFailures >= 3) {
+                this.status = 'failed';
+                const errMsg = lastDisconnect?.error instanceof Error ? lastDisconnect.error.message : `Connection closed (${statusCode ?? 'unknown'})`;
+                onStatus('failed', `WhatsApp connection failed before pairing: ${errMsg}`);
+
+                return;
+              }
+            }
+
             // Post-pairing handshake: WhatsApp servers close pairing socket with
             // 515 (restartRequired) or 428 (connectionClosed) once keys are saved.
             // Reconnect immediately using the saved creds to complete authentication.
