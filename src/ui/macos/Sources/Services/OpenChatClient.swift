@@ -56,6 +56,45 @@ public final class OpenChatClient: NSObject, URLSessionWebSocketDelegate {
         return decoded
     }
 
+    public func mkdir(path: String, recursive: Bool = false) async throws {
+        try await postVfsAction(endpoint: "api/vfs/mkdir", payload: ["path": path, "recursive": recursive])
+    }
+
+    public func rmdir(path: String) async throws {
+        try await postVfsAction(endpoint: "api/vfs/rmdir", payload: ["path": path])
+    }
+
+    public func rm(path: String) async throws {
+        try await postVfsAction(endpoint: "api/vfs/rm", payload: ["path": path])
+    }
+
+    public func ln(source: String, targetDir: String) async throws {
+        try await postVfsAction(endpoint: "api/vfs/ln", payload: ["source": source, "targetDir": targetDir])
+    }
+
+    private func postVfsAction(endpoint: String, payload: [String: Any]) async throws {
+        guard let requestURL = URL(string: endpoint, relativeTo: baseURL)?.absoluteURL else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        if httpResponse.statusCode != 200 {
+            if let apiErr = try? JSONDecoder().decode(ApiErrorResponse.self, from: data), let msg = apiErr.error {
+                throw NSError(domain: "OpenChatClient", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
+            }
+            throw URLError(.badServerResponse)
+        }
+    }
+
     public func connectAuth(platform: String, accountLabel: String, clean: Bool = false) async throws -> String {
         guard let requestURL = URL(string: "api/auth/connect", relativeTo: baseURL)?.absoluteURL else {
             throw URLError(.badURL)
