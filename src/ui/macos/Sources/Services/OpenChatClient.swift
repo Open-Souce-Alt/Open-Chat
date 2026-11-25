@@ -52,7 +52,68 @@ public final class OpenChatClient: NSObject, URLSessionWebSocketDelegate {
             throw URLError(.badServerResponse)
         }
 
-        return try JSONDecoder().decode(CatResult.self, from: data)
+        let decoded = try JSONDecoder().decode(CatResult.self, from: data)
+        return decoded
+    }
+
+    public func connectAuth(platform: String, accountLabel: String, clean: Bool = false) async throws -> String {
+        guard let requestURL = URL(string: "api/auth/connect", relativeTo: baseURL)?.absoluteURL else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "platform": platform,
+            "accountLabel": accountLabel,
+            "clean": clean
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        if httpResponse.statusCode != 200 {
+            if let apiErr = try? JSONDecoder().decode(ApiErrorResponse.self, from: data), let msg = apiErr.error {
+                throw NSError(domain: "OpenChatClient", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
+            }
+            throw URLError(.badServerResponse)
+        }
+
+        let decoded = try JSONDecoder().decode(AuthConnectResponse.self, from: data)
+        return decoded.accountId
+    }
+
+    public func submitChallengeResponse(accountId: String, response code: String) async throws {
+        guard let requestURL = URL(string: "api/auth/challenge-response", relativeTo: baseURL)?.absoluteURL else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: String] = [
+            "accountId": accountId,
+            "response": code
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        if httpResponse.statusCode != 200 {
+            if let apiErr = try? JSONDecoder().decode(ApiErrorResponse.self, from: data), let msg = apiErr.error {
+                throw NSError(domain: "OpenChatClient", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
+            }
+            throw URLError(.badServerResponse)
+        }
     }
 
     public func connectWebSocket() {

@@ -16,7 +16,18 @@ public struct ContentView: View {
         .task {
             await viewModel.initialLoad()
         }
+        .sheet(isPresented: $viewModel.isShowingPairingSheet) {
+            PairingSheetView(viewModel: viewModel)
+        }
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button(action: {
+                    viewModel.openPairingSheet()
+                }) {
+                    Label("Connect Account", systemImage: "qrcode.viewfinder")
+                }
+                .help("Connect WhatsApp or Instagram")
+            }
             ToolbarItem(placement: .automatic) {
                 Button(action: {
                     Task {

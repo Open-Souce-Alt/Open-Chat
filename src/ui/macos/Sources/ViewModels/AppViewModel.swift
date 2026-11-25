@@ -13,6 +13,18 @@ public final class AppViewModel: ObservableObject {
     @Published public var isLoading: Bool = false
     @Published public var errorMessage: String?
 
+    // Auth / Pairing Sheet state
+    @Published public var isShowingPairingSheet: Bool = false
+    @Published public var pairingPlatform: String = "whatsapp"
+    @Published public var pairingAccountLabel: String = "personal"
+    @Published public var pairingAccountId: String?
+    @Published public var pairingStatus: String = "idle"
+    @Published public var pairingChallengeType: String?
+    @Published public var pairingChallengeData: String?
+    @Published public var pairingChallengePrompt: String?
+    @Published public var pairingError: String?
+    @Published public var isSubmittingAuth: Bool = false
+
     public let client: OpenChatClient
 
     public init(client: OpenChatClient = OpenChatClient()) {
@@ -30,19 +42,117 @@ public final class AppViewModel: ObservableObject {
     }
 
     private func handleWebSocketEvent(_ text: String) {
-        // When VFS change or message arrive, refresh current views
-        if text.contains("vfs:change") || text.contains("sync:complete") {
+        guard let data = text.data(using: .utf8),
+              let envelope = try? JSONDecoder().decode(EventTypeEnvelope.self, from: data) else {
+            return
+        }
+
+        switch envelope.type {
+        case "vfs:change", "sync:complete":
             Task {
                 await loadDirectories()
                 await loadChats(for: selectedDirectoryPath)
             }
-        }
-        if text.contains("message:new") {
+        case "message:new":
             if let chat = selectedChat {
                 Task {
                     await selectChat(chat)
                 }
             }
+        case "auth:challenge":
+            if let event = try? JSONDecoder().decode(AuthChallengeEvent.self, from: data) {
+                if pairingAccountId == nil || pairingAccountId == event.accountId {
+                    pairingAccountId = event.accountId
+                    pairingStatus = "awaiting_challenge"
+                    pairingChallengeType = event.challenge.challengeType
+                    pairingChallengeData = event.challenge.data
+                    pairingChallengePrompt = event.challenge.prompt
+                    pairingError = nil
+                    isSubmittingAuth = false
+                }
+            }
+        case "auth:status":
+            if let event = try? JSONDecoder().decode(AuthStatusEvent.self, from: data) {
+                if pairingAccountId == nil || pairingAccountId == event.accountId {
+                    pairingStatus = event.status
+                    if event.status == "failed" {
+                        pairingError = event.error ?? "Authentication failed."
+                        isSubmittingAuth = false
+                    } else if event.status == "authenticated" {
+                        pairingError = nil
+                        pairingChallengeType = nil
+                        pairingChallengeData = nil
+                        isSubmittingAuth = false
+
+                        Task {
+                            await loadDirectories()
+                            await loadChats(for: selectedDirectoryPath)
+                            try? await Task.sleep(nanoseconds: 1_200_000_000)
+                            if self.pairingStatus == "authenticated" {
+                                self.isShowingPairingSheet = false
+                            }
+                        }
+                    }
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    public func openPairingSheet() {
+        resetPairingState()
+        isShowingPairingSheet = true
+    }
+
+    public func resetPairingState() {
+        pairingAccountId = nil
+        pairingStatus = "idle"
+        pairingChallengeType = nil
+        pairingChallengeData = nil
+        pairingChallengePrompt = nil
+        pairingError = nil
+        isSubmittingAuth = false
+    }
+
+    public func startPairing(clean: Bool = false) async {
+        let trimmedLabel = pairingAccountLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = trimmedLabel.isEmpty ? "personal" : trimmedLabel
+
+        isSubmittingAuth = true
+        pairingError = nil
+        pairingChallengeType = nil
+        pairingChallengeData = nil
+        pairingChallengePrompt = nil
+        pairingStatus = "starting"
+
+        do {
+            let accountId = try await client.connectAuth(
+                platform: pairingPlatform,
+                accountLabel: label,
+                clean: clean
+            )
+            self.pairingAccountId = accountId
+        } catch {
+            self.pairingStatus = "failed"
+            self.pairingError = error.localizedDescription
+            self.isSubmittingAuth = false
+        }
+    }
+
+    public func submitChallengeResponse(_ code: String) async {
+        guard let accountId = pairingAccountId else { return }
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        isSubmittingAuth = true
+        pairingError = nil
+
+        do {
+            try await client.submitChallengeResponse(accountId: accountId, response: trimmed)
+        } catch {
+            self.pairingError = error.localizedDescription
+            self.isSubmittingAuth = false
         }
     }
 
